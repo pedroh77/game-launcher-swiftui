@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key>
+	<string>GameLauncher</string>
+	<key>CFBundleIdentifier</key>
+	<string>local.personal.GameLauncher</string>
+	<key>CFBundleName</key>
+	<string>Game Launcher</string>
+	<key>CFBundleDisplayName</key>
+	<string>Game Launcher</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.4.2</string>
+	<key>CFBundleVersion</key>
+	<string>15</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Run your configured game-launcher scripts, manage display settings and focus game windows.</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>pt-BR</string>
+	</array>
+</dict>
+</plist>

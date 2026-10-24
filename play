@@ -1,0 +1,124 @@
+#!/bin/dash
+# native-display-owner-v1
+# play - Atalho e supervisor para o Lançador de Jogos Universal em Racket
+
+RACKET_BIN="${GAME_LAUNCHER_RACKET:-}"
+if [ -n "$RACKET_BIN" ]; then
+    if [ ! -x "$RACKET_BIN" ]; then
+        echo "❌ Racket configurado não é executável: $RACKET_BIN"
+        exit 1
+    fi
+elif [ -x "/Applications/Racket v9.3/bin/racket" ]; then
+    RACKET_BIN="/Applications/Racket v9.3/bin/racket"
+elif [ -x "/opt/homebrew/bin/racket" ]; then	
+    RACKET_BIN="/opt/homebrew/bin/racket"
+elif [ -x "/usr/local/bin/racket" ]; then	
+    RACKET_BIN="/usr/local/bin/racket"
+elif command -v racket >/dev/null 2>&1; then
+    RACKET_BIN="$(command -v racket)"
+else
+    # Busca dinâmica por qualquer versão do Racket em /Applications
+    POSSIBLE_RACKET=$(ls -d /Applications/Racket*/bin/racket 2>/dev/null | tail -n 1)
+    if [ -n "$POSSIBLE_RACKET" ] && [ -x "$POSSIBLE_RACKET" ]; then
+        RACKET_BIN="$POSSIBLE_RACKET"
+    else
+        echo "❌ Erro: Racket não encontrado no sistema."
+        echo "Instale via Homebrew com: brew install racket ou baixe em racket-lang.org"
+        exit 1
+    fi
+fi
+
+LAUNCHER_SCRIPT="${GAME_LAUNCHER_SCRIPT:-$HOME/bin/game-launcher/main.rkt}"
+
+if [ ! -f "$LAUNCHER_SCRIPT" ]; then
+    echo "❌ Erro: Script do lançador não encontrado em: $LAUNCHER_SCRIPT"
+    exit 1
+fi
+
+# Se for apenas listagem ou consulta de info, executa direto
+case "$1" in
+    -l|--list|-i|--info|--export-racket|"")
+        exec "$RACKET_BIN" "$LAUNCHER_SCRIPT" "$@"
+        ;;
+esac
+
+# ============================================================
+# SUPERVISOR DE SINAIS (compatível com Platypus e Terminal)
+# ============================================================
+
+# Inicia o Racket em background para monitorar e capturar sinais (SIGTERM/SIGINT)
+"$RACKET_BIN" "$LAUNCHER_SCRIPT" "$@" &
+RACKET_PID=$!
+
+cleaned_up=0
+cleanup() {
+    # Evita reentrância
+    if [ "$cleaned_up" -eq 1 ]; then
+        return
+    fi
+    cleaned_up=1
+    trap - INT TERM HUP EXIT
+
+    echo "🛑 Cancelamento solicitado (Platypus/Terminal). Disparando limpeza completa..."
+
+    # 1. Encerra o processo do lançador Racket
+    if [ -n "$RACKET_PID" ] && kill -0 "$RACKET_PID" 2>/dev/null; then
+        kill -INT "$RACKET_PID" 2>/dev/null
+        # Aguarda brevemente caso o Racket esteja em processo de saída
+        for i in 1 2; do
+            if ! kill -0 "$RACKET_PID" 2>/dev/null; then
+                break
+            fi
+            sleep 0.5
+        done
+        if kill -0 "$RACKET_PID" 2>/dev/null; then
+            kill -KILL "$RACKET_PID" 2>/dev/null
+        fi
+    fi
+
+    # 2. Encerra processos utilitários auxiliares (caffeinate, blackbars)
+    killall caffeinate 2>/dev/null
+    pkill -f "blackbars" 2>/dev/null
+
+    # 3. Encerra todos os processos Wine ativos apenas se houver algum em execução
+    if pgrep -f "wineserver|wine-preloader|wine64-preloader" >/dev/null 2>&1; then
+        echo "🧹 Encerrando processos do Wine (wineserver -k)..."
+        if [ -x "$HOME/bin/kill-wine-processes.sh" ]; then
+            "$HOME/bin/kill-wine-processes.sh"
+        else
+            [ -x "$HOME/bin/kill-steam-sk.sh" ] && "$HOME/bin/kill-steam-sk.sh"
+            [ -x "$HOME/bin/kill-steam-dxvk.sh" ] && "$HOME/bin/kill-steam-dxvk.sh"
+        fi
+    fi
+
+    # Native mode changes belong exclusively to the app. Pointer settings still
+    # belong to this backend, including Cancel before a game has changed size.
+    if [ -n "${GAME_LAUNCHER_NATIVE_DISPLAY:-}" ]; then
+        if [ "$GAME_LAUNCHER_NATIVE_DISPLAY" != "skip" ]; then
+            echo "🔄 Restaurando ponteiro; resolução será restaurada pelo app..."
+            defaults write NSGlobalDomain com.apple.trackpad.scaling -float 1 >/dev/null 2>&1
+            defaults write NSGlobalDomain com.apple.mouse.scaling -float 1 >/dev/null 2>&1
+            ACTIVATE_SETTINGS="${GAME_LAUNCHER_ACTIVATE_SETTINGS:-/System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings}"
+            if [ -x "$ACTIVATE_SETTINGS" ]; then "$ACTIVATE_SETTINGS" -u >/dev/null 2>&1; fi
+        fi
+    else
+    # 4. Restauração garantida de resolução e sensibilidade do ponteiro
+    CURRENT_RES=$(osascript -e 'tell application "Finder" to get bounds of window of desktop' 2>/dev/null | awk -F ', ' '{print $3 "x" $4}')
+    if [ -n "$CURRENT_RES" ] && [ "$CURRENT_RES" != "1440x900" ] && [ "$CURRENT_RES" != "1920x1080" ]; then
+        echo "🔄 Restaurando resolução e escala do mouse..."
+        if [ -x "/Applications/RDM.app/Contents/MacOS/RDM" ]; then
+            /Applications/RDM.app/Contents/MacOS/RDM -s 2 -w 1440 -h 900 >/dev/null 2>&1
+        fi
+        defaults write NSGlobalDomain com.apple.trackpad.scaling -float 1 >/dev/null 2>&1
+        defaults write NSGlobalDomain com.apple.mouse.scaling -float 1 >/dev/null 2>&1
+        /System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings -u >/dev/null 2>&1
+    fi
+    fi
+}
+
+trap cleanup INT TERM HUP EXIT
+
+wait "$RACKET_PID" 2>/dev/null
+EXIT_CODE=$?
+cleaned_up=1
+exit $EXIT_CODE
